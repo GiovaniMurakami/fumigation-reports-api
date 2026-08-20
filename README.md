@@ -11,4 +11,12 @@ npm run dev
 
 No deploy, configure `MONGODB_URI`, `JWT_SECRET`, `AWS_S3_BUCKET`, `CORS_ORIGIN` e `PUBLIC_APP_URL` no ambiente e execute `npm run deploy:dev` ou `npm run deploy:prod`.
 
-O bucket precisa permitir leitura das evidências (ou ser servido por CloudFront) e CORS para `PUT` vindo do domínio do app. Nunca envie credenciais AWS ao React: o browser recebe apenas uma URL de upload válida por cinco minutos.
+O bucket pode permanecer privado: a API gera URLs pré-assinadas de leitura para exibir as evidências. A identidade AWS da API precisa de `s3:PutObject` e `s3:GetObject` no prefixo `fumigacao/*`. Nunca envie credenciais AWS ao React: o browser recebe apenas URLs temporárias.
+
+Para desenvolvimento local, aplique `s3-cors.json` ao bucket:
+
+```bash
+aws s3api put-bucket-cors --bucket SEU_BUCKET --cors-configuration file://s3-cors.json
+```
+
+Antes da produção, acrescente o domínio HTTPS do Amplify em `AllowedOrigins`.

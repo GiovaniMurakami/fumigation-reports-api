@@ -5,7 +5,7 @@ import express, { NextFunction, Request, Response } from "express";
 import helmet from "helmet";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
@@ -31,9 +31,29 @@ const segredo = () => {
 };
 const tokenHash = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 const normalizarLote = (lote: string) => lote.trim().toUpperCase();
+let s3Client: S3Client | null = null;
+const obterS3Client = () => s3Client ??= new S3Client({
+  region: process.env.AWS_S3_REGION || "us-east-1",
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
+});
 const semInternos = (doc: any) => {
   const item = doc.toObject ? doc.toObject() : doc;
   const { _id, usuarioId, compartilhamento, ...publico } = item;
+  return publico;
+};
+const comFotosAssinadas = async (doc: any) => {
+  const publico = semInternos(doc);
+  const bucket = process.env.AWS_S3_BUCKET;
+  if (!bucket) return publico;
+  publico.fotos = await Promise.all((publico.fotos || []).map(async (foto: any) => ({
+    ...foto,
+    url: await getSignedUrl(
+      obterS3Client(),
+      new GetObjectCommand({ Bucket: bucket, Key: foto.chave }),
+      { expiresIn: 3600 },
+    ),
+  })));
   return publico;
 };
 
@@ -52,7 +72,7 @@ const loginSchema = z.object({ email: z.email(), senha: z.string().min(1) });
 const fotoSchema = z.object({ url: z.url(), chave: z.string().min(1), nome: z.string().min(1).max(200), contentType: z.string().regex(/^image\/(jpeg|png|webp)$/) });
 const relatorioSchema = z.object({
   lotes: z.array(z.string().trim().min(1).max(80)).min(1, "Informe ao menos um lote").max(100),
-  local: z.string().trim().min(2).max(200), dataTratamento: z.iso.datetime(),
+  dataTratamento: z.iso.datetime(),
   fotos: z.array(fotoSchema).min(1, "Envie ao menos uma foto").max(12),
 });
 
@@ -89,8 +109,7 @@ app.post("/uploads/url", auth, async (req, res) => {
   if (!bucket) return res.status(503).json({ mensagem: "Bucket S3 não configurado." });
   const ext = parsed.data.nome.split(".").pop()?.replace(/[^a-z0-9]/gi, "").toLowerCase() || "jpg";
   const chave = `fumigacao/${req.usuarioId}/${new Date().toISOString().slice(0, 10)}/${uuid()}.${ext}`;
-  const client = new S3Client({ region });
-  const uploadUrl = await getSignedUrl(client, new PutObjectCommand({ Bucket: bucket, Key: chave, ContentType: parsed.data.contentType }), { expiresIn: 300 });
+  const uploadUrl = await getSignedUrl(obterS3Client(), new PutObjectCommand({ Bucket: bucket, Key: chave, ContentType: parsed.data.contentType }), { expiresIn: 300 });
   res.json({ uploadUrl, chave, url: `https://${bucket}.s3.${region}.amazonaws.com/${chave}` });
 });
 
@@ -102,19 +121,19 @@ app.post("/relatorios", auth, async (req, res) => {
   }
   const lotes = [...new Set(parsed.data.lotes.map(normalizarLote))];
   const relatorio = await Relatorio.create({ ...parsed.data, lotes, id: uuid(), usuarioId: req.usuarioId });
-  res.status(201).json(semInternos(relatorio));
+  res.status(201).json(await comFotosAssinadas(relatorio));
 });
 app.get("/relatorios", auth, async (req, res) => {
   const lote = typeof req.query.lote === "string" ? normalizarLote(req.query.lote) : "";
   const filtro: any = { usuarioId: req.usuarioId };
   if (lote) filtro.lotes = { $regex: lote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
   const itens = await Relatorio.find(filtro).sort({ dataTratamento: -1 }).limit(100).lean();
-  res.json({ itens: itens.map(semInternos) });
+  res.json({ itens: await Promise.all(itens.map(comFotosAssinadas)) });
 });
 app.get("/relatorios/:id", auth, async (req, res) => {
   const item = await Relatorio.findOne({ id: req.params.id, usuarioId: req.usuarioId });
   if (!item) return res.status(404).json({ mensagem: "Relatório não encontrado." });
-  res.json(semInternos(item));
+  res.json(await comFotosAssinadas(item));
 });
 app.post("/relatorios/:id/compartilhar", auth, async (req, res) => {
   const item = await Relatorio.findOne({ id: req.params.id, usuarioId: req.usuarioId });
@@ -133,7 +152,7 @@ app.delete("/relatorios/:id/compartilhar", auth, async (req, res) => {
 app.get("/publico/relatorios/:token", async (req, res) => {
   const item = await Relatorio.findOne({ "compartilhamento.tokenHash": tokenHash(req.params.token), "compartilhamento.ativo": true });
   if (!item) return res.status(404).json({ mensagem: "Este compartilhamento não existe ou foi revogado." });
-  res.json(semInternos(item));
+  res.json(await comFotosAssinadas(item));
 });
 
 app.use((_req, res) => res.status(404).json({ mensagem: "Rota não encontrada." }));

@@ -18,7 +18,6 @@ const relatorioSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
   usuarioId: { type: String, required: true, index: true },
   lotes: { type: [String], required: true, index: true },
-  local: { type: String, required: true, trim: true },
   dataTratamento: { type: Date, required: true },
   fotos: { type: [fotoSchema], default: [] },
   compartilhamento: {
