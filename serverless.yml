@@ -29,8 +29,12 @@ functions:
   api:
     handler: build/handler.handler
     events:
-      - httpApi: { path: /{proxy+}, method: ANY }
-      - httpApi: { path: /, method: ANY }
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
 
 package:
   patterns:
