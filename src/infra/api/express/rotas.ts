@@ -10,7 +10,7 @@ import { obterJwtSecret } from "../../../helpers/env";
 import { escaparRegex, normalizarLote } from "../../../helpers/texto";
 import { tokenHash } from "../../../helpers/token";
 import { CadastroGlobal, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
-import { gerarUrlUploadFoto } from "../../services/s3Servico";
+import { assinarUrlObjeto, gerarUrlUploadFoto } from "../../services/s3Servico";
 import { autenticarJwt } from "./middlewares/autenticarJwt";
 import { cadastroGlobalSchema, cadastroSchema, empresaSchema, funcionariosSchema, loginSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
 
@@ -67,7 +67,10 @@ export function criarRotas(app: Express) {
       return res.status(400).json({ mensagem: "A imagem deve pertencer ao bucket autorizado." });
     }
 
-    const upstream = await fetch(url, { redirect: "error" });
+    const chave = decodeURIComponent(url.pathname.slice(1));
+    const urlLeitura = url.search ? url.toString() : await assinarUrlObjeto(chave);
+    if (!urlLeitura) return res.status(503).json({ mensagem: "Armazenamento de imagens indisponível." });
+    const upstream = await fetch(urlLeitura, { redirect: "error" });
     if (!upstream.ok) return res.status(upstream.status === 404 ? 404 : 502).json({ mensagem: "Não foi possível obter a imagem." });
     const contentType = upstream.headers.get("content-type") || "";
     if (!contentType.startsWith("image/")) return res.status(400).json({ mensagem: "O conteúdo obtido não é uma imagem." });
