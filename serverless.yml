@@ -22,15 +22,19 @@ provider:
     role:
       statements:
         - Effect: Allow
-          Action: [s3:PutObject]
+          Action: [s3:PutObject, s3:GetObject]
           Resource: arn:aws:s3:::${env:AWS_S3_BUCKET}/*
 
 functions:
   api:
     handler: build/handler.handler
     events:
-      - httpApi: { path: /{proxy+}, method: ANY }
-      - httpApi: { path: /, method: ANY }
+      - httpApi:
+          path: /{proxy+}
+          method: ANY
+      - httpApi:
+          path: /
+          method: ANY
 
 package:
   patterns:
