@@ -55,6 +55,33 @@ const cadastroGlobalId = "global";
 export function criarRotas(app: Express) {
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+  app.get("/imagens/proxy", async (req, res) => {
+    const valorUrl = typeof req.query.url === "string" ? req.query.url : "";
+    const bucket = process.env.AWS_S3_BUCKET || "";
+    const region = process.env.AWS_S3_REGION || "us-east-1";
+    let url: URL;
+    try { url = new URL(valorUrl); } catch { return res.status(400).json({ mensagem: "URL de imagem inválida." }); }
+
+    const hostPermitido = `${bucket}.s3.${region}.amazonaws.com`;
+    if (!bucket || url.protocol !== "https:" || url.hostname !== hostPermitido || !url.pathname.startsWith("/fumigacao/")) {
+      return res.status(400).json({ mensagem: "A imagem deve pertencer ao bucket autorizado." });
+    }
+
+    const upstream = await fetch(url, { redirect: "error" });
+    if (!upstream.ok) return res.status(upstream.status === 404 ? 404 : 502).json({ mensagem: "Não foi possível obter a imagem." });
+    const contentType = upstream.headers.get("content-type") || "";
+    if (!contentType.startsWith("image/")) return res.status(400).json({ mensagem: "O conteúdo obtido não é uma imagem." });
+    const tamanhoInformado = Number(upstream.headers.get("content-length") || 0);
+    if (tamanhoInformado > 10 * 1024 * 1024) return res.status(413).json({ mensagem: "Imagem maior que 10 MB." });
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    if (!buffer.length || buffer.length > 10 * 1024 * 1024) return res.status(413).json({ mensagem: "Imagem vazia ou maior que 10 MB." });
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.send(buffer);
+  });
+
   app.post("/auth/cadastro", async (req, res) => {
     const parsed = cadastroSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ mensagem: "Dados inválidos.", erros: z.flattenError(parsed.error).fieldErrors });
