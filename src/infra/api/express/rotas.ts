@@ -10,7 +10,6 @@ import { obterJwtSecret } from "../../../helpers/env";
 import { escaparRegex, normalizarLote } from "../../../helpers/texto";
 import { tokenHash } from "../../../helpers/token";
 import { CadastroGlobal, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
-import { enviarPdf } from "../../services/pdfRelatorioServico";
 import { gerarUrlUploadFoto } from "../../services/s3Servico";
 import { autenticarJwt } from "./middlewares/autenticarJwt";
 import { cadastroGlobalSchema, cadastroSchema, empresaSchema, funcionariosSchema, loginSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
@@ -306,11 +305,6 @@ export function criarRotas(app: Express) {
     res.json(await comFotosAssinadas(item));
   });
 
-  app.get("/relatorios/:id/pdf", autenticarJwt, async (req, res) => {
-    const item = await buscarRelatorioUsuario(req, res);
-    if (!item) return;
-    await enviarPdf(res, item);
-  });
 
   app.post("/relatorios/:id/compartilhar", autenticarJwt, async (req, res) => {
     const usuario = await exigirEscrita(req, res);
@@ -345,11 +339,6 @@ export function criarRotas(app: Express) {
     res.json(await comFotosAssinadas(item));
   });
 
-  app.get("/publico/relatorios/:token/pdf", async (req, res) => {
-    const item = await buscarRelatorioPublico(req, res);
-    if (!item) return;
-    await enviarPdf(res, item);
-  });
 }
 
 async function buscarRelatorioUsuario(req: Request, res: Response) {
