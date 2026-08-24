@@ -1,5 +1,5 @@
 import { Response } from "express";
-import PDFDocument from "pdfkit";
+import PDFDocument = require("pdfkit");
 import { comFotosAssinadas } from "../../casosDeUso/relatorio/serializarRelatorio";
 import { biosafeLogo } from "./biosafeLogo";
 
