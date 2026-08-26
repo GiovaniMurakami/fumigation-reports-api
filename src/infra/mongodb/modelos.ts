@@ -8,6 +8,7 @@ const usuarioSchema = new Schema({
   role: { type: String, enum: ["admin", "funcionario", "leitor"], default: "leitor", index: true },
   status: { type: String, enum: ["pendente", "ativo"], default: "pendente", index: true },
   empresa: { type: String, default: "", trim: true, index: true },
+  empresas: { type: [String], default: [], index: true },
   validadoPor: { type: String, default: null },
   validadoEm: { type: Date, default: null },
 }, { timestamps: true, versionKey: false, collection: "fumigacao_usuarios" });

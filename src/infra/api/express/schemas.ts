@@ -47,7 +47,8 @@ export const relatorioSchema = z.object({
 });
 
 export const validarUsuarioSchema = z.object({
-  empresa: z.string().trim().min(2).max(120),
+  empresa: z.string().trim().max(120).optional(),
+  empresas: z.array(z.string().trim().min(2).max(120)).max(50).optional(),
   role: z.enum(["admin", "funcionario", "leitor"]).default("leitor"),
 });
 

@@ -16,13 +16,20 @@ import { cadastroGlobalSchema, cadastroSchema, empresaSchema, funcionariosSchema
 
 const rolesEscrita = new Set(["admin", "funcionario"]);
 
+const normalizarEmpresasUsuario = (usuario: any) => {
+  const empresas = Array.isArray(usuario.empresas) ? usuario.empresas : [];
+  const legada = typeof usuario.empresa === "string" ? usuario.empresa : "";
+  return [...new Set([...empresas, legada].map((empresa: string) => empresa.trim()).filter(Boolean))];
+};
+
 const perfilUsuario = (usuario: any) => ({
   id: usuario.id,
   nome: usuario.nome,
   email: usuario.email,
   role: usuario.role || "admin",
   status: usuario.status || "ativo",
-  empresa: usuario.empresa || "",
+  empresas: normalizarEmpresasUsuario(usuario),
+  empresa: normalizarEmpresasUsuario(usuario)[0] || "",
 });
 
 const usuarioPublico = (usuario: any) => {
@@ -34,6 +41,7 @@ const usuarioPublico = (usuario: any) => {
     role: perfil.role,
     status: perfil.status,
     empresa: perfil.empresa,
+    empresas: perfil.empresas,
   };
 };
 
@@ -153,12 +161,17 @@ export function criarRotas(app: Express) {
 
     const parsed = validarUsuarioSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ mensagem: "Informe empresa e perfil válidos.", erros: z.flattenError(parsed.error).fieldErrors });
+    const empresas = normalizarEmpresasValidacao(parsed.data);
+    if (parsed.data.role === "leitor" && !empresas.length) {
+      return res.status(400).json({ mensagem: "Usuários com permissão de leitura devem estar vinculados a pelo menos uma empresa." });
+    }
 
     const usuario = await Usuario.findOneAndUpdate(
       { id: req.params.id },
       {
         $set: {
-          empresa: parsed.data.empresa,
+          empresa: empresas[0] || "",
+          empresas,
           role: parsed.data.role,
           status: "ativo",
           validadoPor: admin.id,
@@ -176,8 +189,7 @@ export function criarRotas(app: Express) {
     const usuario = await exigirUsuarioAtivo(req, res);
     if (!usuario) return;
 
-    const perfil = perfilUsuario(usuario);
-    const filtro = perfil.role === "admin" && !perfil.empresa ? {} : { nome: perfil.empresa };
+    const filtro = filtroAcessoEmpresas(usuario);
     const empresas = await Empresa.find(filtro).sort({ nome: 1 }).lean();
     res.json({ itens: empresas.map(empresaPublica) });
   });
@@ -473,16 +485,23 @@ async function exigirAdmin(req: Request, res: Response) {
 
 function resolverEmpresaRelatorio(usuario: any, empresaBody?: string) {
   const perfil = perfilUsuario(usuario);
-  if (perfil.empresa) return perfil.empresa;
-  if (perfil.role === "admin") return empresaBody?.trim() || "";
+  if (perfil.empresas.length === 1) return perfil.empresas[0];
+  const empresa = empresaBody?.trim() || "";
+  if (perfil.empresas.length > 1) return perfil.empresas.includes(empresa) ? empresa : "";
+  if (rolesEscrita.has(perfil.role)) return empresa;
   return "";
 }
 
 function filtroAcessoRelatorios(usuario: any) {
   const perfil = perfilUsuario(usuario);
-  if (perfil.role === "admin" && !perfil.empresa) return {};
-  if (!perfil.empresa) return { empresa: "__sem_empresa_vinculada__" };
-  return { empresa: perfil.empresa };
+  if (rolesEscrita.has(perfil.role) && !perfil.empresas.length) return {};
+  if (!perfil.empresas.length) return { empresa: "__sem_empresa_vinculada__" };
+  return { empresa: { $in: perfil.empresas } };
+}
+
+function normalizarEmpresasValidacao(data: any) {
+  const empresas = Array.isArray(data.empresas) ? data.empresas : data.empresa ? [data.empresa] : [];
+  return limparLista(empresas);
 }
 
 function normalizarEmpresaPayload(data: any, id = uuid()) {
@@ -522,8 +541,9 @@ async function resolverAssinaturasRelatorio(assinaturaIds: string[]) {
 
 function filtroAcessoEmpresas(usuario: any) {
   const perfil = perfilUsuario(usuario);
-  if (perfil.role === "admin" && !perfil.empresa) return {};
-  return { nome: perfil.empresa };
+  if (rolesEscrita.has(perfil.role) && !perfil.empresas.length) return {};
+  if (!perfil.empresas.length) return { nome: "__sem_empresa_vinculada__" };
+  return { nome: { $in: perfil.empresas } };
 }
 
 async function buscarRelatorioPublico(req: Request, res: Response) {
