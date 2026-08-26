@@ -34,6 +34,8 @@ export const relatorioSchema = z.object({
   assinaturaIds: z.array(z.string().trim().min(1)).max(10).optional(),
   lotes: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
   dataTratamento: z.iso.datetime(),
+  dataInicio: z.iso.datetime().optional(),
+  dataFim: z.iso.datetime().optional(),
   formularioTitulo: z.string().trim().max(120).optional(),
   unidadeCliente: z.string().trim().max(120).optional(),
   areaSetor: z.string().trim().max(180).optional(),

@@ -287,6 +287,14 @@ export function criarRotas(app: Express) {
     }
 
     const dataTratamento = new Date(parsed.data.dataTratamento);
+    const dataInicio = parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : undefined;
+    const dataFim = parsed.data.dataFim ? new Date(parsed.data.dataFim) : undefined;
+    if (parsed.data.tipoControle === "Fumigação" && (!dataInicio || !dataFim)) {
+      return res.status(400).json({ mensagem: "Informe as datas de início e fim da fumigação." });
+    }
+    if (dataInicio && dataFim && dataFim < dataInicio) {
+      return res.status(400).json({ mensagem: "A data de fim não pode ser anterior à data de início." });
+    }
     const empresa = resolverEmpresaRelatorio(usuario, parsed.data.empresa);
     if (!empresa) return res.status(400).json({ mensagem: "Informe a empresa do relatório." });
     const assinaturas = await resolverAssinaturasRelatorio(parsed.data.assinaturaIds || []);
@@ -299,6 +307,8 @@ export function criarRotas(app: Express) {
       empresa,
       assinaturas,
       dataTratamento,
+      dataInicio,
+      dataFim,
       lotes,
       numeroOs,
       formularioTitulo: parsed.data.formularioTitulo || "Registro de controle de pragas",

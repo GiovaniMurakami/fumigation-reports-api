@@ -52,6 +52,8 @@ const relatorioSchema = new Schema({
   empresa: { type: String, required: true, trim: true, index: true },
   lotes: { type: [String], required: true, index: true },
   dataTratamento: { type: Date, required: true },
+  dataInicio: { type: Date, default: null },
+  dataFim: { type: Date, default: null },
   formularioTitulo: { type: String, default: "Registro de controle de pragas", trim: true },
   unidadeCliente: { type: String, default: "", trim: true, index: true },
   areaSetor: { type: String, default: "", trim: true },
