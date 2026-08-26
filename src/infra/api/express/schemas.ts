@@ -43,7 +43,7 @@ export const relatorioSchema = z.object({
   numeroOs: z.string().trim().max(80).optional(),
   realizadoPor: z.string().trim().max(120).optional(),
   dados: z.record(z.string(), z.unknown()).optional(),
-  fotos: z.array(fotoSchema).max(60).default([]),
+  fotos: z.array(fotoSchema).default([]),
 });
 
 export const validarUsuarioSchema = z.object({
