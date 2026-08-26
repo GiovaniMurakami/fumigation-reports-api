@@ -51,6 +51,9 @@ const funcionarioPublico = (funcionario: any) => {
 
 const limparLista = (itens: string[]) => [...new Set(itens.map(item => item.trim()).filter(Boolean))];
 const cadastroGlobalId = "global";
+const paginaPadrao = 1;
+const limitePadraoRelatorios = 20;
+const limiteMaximoRelatorios = 100;
 
 export function criarRotas(app: Express) {
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -335,8 +338,28 @@ export function criarRotas(app: Express) {
       ];
     }
 
-    const itens = await Relatorio.find(filtro).sort({ dataTratamento: -1 }).limit(100).lean();
-    res.json({ itens: await Promise.all(itens.map(comFotosAssinadas)) });
+    const paginacao = obterPaginacao(req);
+    const [itens, total] = await Promise.all([
+      Relatorio.find(filtro)
+        .sort({ dataTratamento: -1 })
+        .skip((paginacao.pagina - 1) * paginacao.limite)
+        .limit(paginacao.limite)
+        .lean(),
+      Relatorio.countDocuments(filtro),
+    ]);
+    const totalPaginas = Math.ceil(total / paginacao.limite);
+
+    res.json({
+      itens: await Promise.all(itens.map(comFotosAssinadas)),
+      paginacao: {
+        pagina: paginacao.pagina,
+        limite: paginacao.limite,
+        total,
+        totalPaginas,
+        temProximaPagina: paginacao.pagina < totalPaginas,
+        temPaginaAnterior: paginacao.pagina > 1,
+      },
+    });
   });
 
   app.get("/relatorios/:id", autenticarJwt, async (req, res) => {
@@ -391,6 +414,19 @@ async function buscarRelatorioUsuario(req: Request, res: Response) {
     return null;
   }
   return item;
+}
+
+function obterPaginacao(req: Request) {
+  const pagina = normalizarInteiroQuery(req.query.pagina ?? req.query.page, paginaPadrao, 1);
+  const limite = normalizarInteiroQuery(req.query.limite ?? req.query.limit, limitePadraoRelatorios, 1, limiteMaximoRelatorios);
+  return { pagina, limite };
+}
+
+function normalizarInteiroQuery(valor: unknown, padrao: number, minimo: number, maximo?: number) {
+  const bruto = Array.isArray(valor) ? valor[0] : valor;
+  const numero = typeof bruto === "string" ? Number(bruto) : Number.NaN;
+  if (!Number.isInteger(numero) || numero < minimo) return padrao;
+  return typeof maximo === "number" ? Math.min(numero, maximo) : numero;
 }
 
 async function usuarioAutenticado(req: Request, res: Response) {
