@@ -32,14 +32,18 @@ const assinaturaSchema = fotoSchema.extend({
 export const relatorioSchema = z.object({
   empresa: z.string().trim().max(120).optional(),
   assinaturaIds: z.array(z.string().trim().min(1)).max(10).optional(),
-  lotes: z.array(z.string().trim().min(1).max(80)).max(100).optional(),
-  dataTratamento: z.iso.datetime(),
+  lotes: z.array(z.string().trim().min(1).max(80)).optional(),
+  cliente: z.string().trim().max(160).optional(),
+  produto: z.string().trim().max(120).optional(),
+  quantidade: z.string().trim().max(80).optional(),
+  placaVeiculo: z.string().trim().max(20).optional(),
+  dataTratamento: z.iso.datetime().optional(),
   dataInicio: z.iso.datetime().optional(),
   dataFim: z.iso.datetime().optional(),
   formularioTitulo: z.string().trim().max(120).optional(),
   unidadeCliente: z.string().trim().max(120).optional(),
   areaSetor: z.string().trim().max(180).optional(),
-  tipoControle: z.string().trim().max(120).optional(),
+  tipoControle: z.string().trim().min(1).max(120),
   numeroOs: z.string().trim().max(80).optional(),
   realizadoPor: z.string().trim().max(120).optional(),
   dados: z.record(z.string(), z.unknown()).optional(),
@@ -68,4 +72,8 @@ export const cadastroGlobalSchema = z.object({
 
 export const funcionariosSchema = z.object({
   funcionarios: listaTextoSchema,
+});
+
+export const clientesSchema = z.object({
+  clientes: listaTextoSchema,
 });

@@ -9,10 +9,10 @@ import { comFotosAssinadas } from "../../../casosDeUso/relatorio/serializarRelat
 import { obterJwtSecret } from "../../../helpers/env";
 import { escaparRegex, normalizarLote } from "../../../helpers/texto";
 import { tokenHash } from "../../../helpers/token";
-import { CadastroGlobal, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
+import { CadastroGlobal, Cliente, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
 import { assinarUrlObjeto, gerarUrlUploadFoto } from "../../services/s3Servico";
 import { autenticarJwt } from "./middlewares/autenticarJwt";
-import { cadastroGlobalSchema, cadastroSchema, empresaSchema, funcionariosSchema, loginSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
+import { cadastroGlobalSchema, cadastroSchema, clientesSchema, empresaSchema, funcionariosSchema, loginSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
 
 const rolesEscrita = new Set(["admin", "funcionario"]);
 
@@ -53,6 +53,12 @@ const empresaPublica = (empresa: any) => {
 
 const funcionarioPublico = (funcionario: any) => {
   const item = funcionario.toObject ? funcionario.toObject() : funcionario;
+  const { _id, ...publico } = item;
+  return publico;
+};
+
+const clientePublico = (cliente: any) => {
+  const item = cliente.toObject ? cliente.toObject() : cliente;
   const { _id, ...publico } = item;
   return publico;
 };
@@ -272,6 +278,32 @@ export function criarRotas(app: Express) {
     res.json({ itens: funcionarios.map(funcionarioPublico) });
   });
 
+  app.get("/clientes", autenticarJwt, async (req, res) => {
+    const usuario = await exigirUsuarioAtivo(req, res);
+    if (!usuario) return;
+
+    const clientes = await Cliente.find({ ativo: true }).sort({ nome: 1 }).lean();
+    res.json({ itens: clientes.map(clientePublico) });
+  });
+
+  app.put("/clientes", autenticarJwt, async (req, res) => {
+    const admin = await exigirAdmin(req, res);
+    if (!admin) return;
+
+    const parsed = clientesSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ mensagem: "Revise os clientes.", erros: z.flattenError(parsed.error).fieldErrors });
+
+    const nomes = limparLista(parsed.data.clientes);
+    await Cliente.updateMany({}, { $set: { ativo: false } });
+    await Promise.all(nomes.map(nome => Cliente.findOneAndUpdate(
+      { nome },
+      { $set: { nome, ativo: true }, $setOnInsert: { id: uuid() } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )));
+    const clientes = await Cliente.find({ ativo: true }).sort({ nome: 1 }).lean();
+    res.json({ itens: clientes.map(clientePublico) });
+  });
+
   app.post("/uploads/url", autenticarJwt, async (req, res) => {
     const usuario = await exigirEscrita(req, res);
     if (!usuario) return;
@@ -301,12 +333,9 @@ export function criarRotas(app: Express) {
       return res.status(400).json({ mensagem: "Uma ou mais evidências não pertencem a este usuário." });
     }
 
-    const dataTratamento = new Date(parsed.data.dataTratamento);
+    const dataTratamento = parsed.data.dataTratamento ? new Date(parsed.data.dataTratamento) : new Date();
     const dataInicio = parsed.data.dataInicio ? new Date(parsed.data.dataInicio) : undefined;
     const dataFim = parsed.data.dataFim ? new Date(parsed.data.dataFim) : undefined;
-    if (parsed.data.tipoControle === "Fumigação" && (!dataInicio || !dataFim)) {
-      return res.status(400).json({ mensagem: "Informe as datas de início e fim da fumigação." });
-    }
     if (dataInicio && dataFim && dataFim < dataInicio) {
       return res.status(400).json({ mensagem: "A data de fim não pode ser anterior à data de início." });
     }
@@ -339,6 +368,7 @@ export function criarRotas(app: Express) {
     if (!usuario) return;
 
     const lote = typeof req.query.lote === "string" ? normalizarLote(req.query.lote) : "";
+    const dataOs = typeof req.query.dataOs === "string" ? chaveDataOsQuery(req.query.dataOs) : "";
     const filtro: any = filtroAcessoRelatorios(usuario);
     if (lote) {
       const termo = escaparRegex(lote);
@@ -347,8 +377,13 @@ export function criarRotas(app: Express) {
         { numeroOs: { $regex: termo, $options: "i" } },
         { tipoControle: { $regex: termo, $options: "i" } },
         { unidadeCliente: { $regex: termo, $options: "i" } },
+        { cliente: { $regex: termo, $options: "i" } },
+        { produto: { $regex: termo, $options: "i" } },
+        { quantidade: { $regex: termo, $options: "i" } },
+        { placaVeiculo: { $regex: termo, $options: "i" } },
       ];
     }
+    if (dataOs) filtro.numeroOs = { $regex: `^OS-${dataOs}/` };
 
     const paginacao = obterPaginacao(req);
     const [itens, total] = await Promise.all([
@@ -439,6 +474,13 @@ function normalizarInteiroQuery(valor: unknown, padrao: number, minimo: number, 
   const numero = typeof bruto === "string" ? Number(bruto) : Number.NaN;
   if (!Number.isInteger(numero) || numero < minimo) return padrao;
   return typeof maximo === "number" ? Math.min(numero, maximo) : numero;
+}
+
+function chaveDataOsQuery(valor: string) {
+  const match = valor.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const [, ano, mes, dia] = match;
+  return `${dia}${mes}${ano.slice(-2)}`;
 }
 
 async function usuarioAutenticado(req: Request, res: Response) {

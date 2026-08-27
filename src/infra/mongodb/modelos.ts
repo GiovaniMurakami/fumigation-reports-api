@@ -47,10 +47,20 @@ const funcionarioSchema = new Schema({
   ativo: { type: Boolean, default: true, index: true },
 }, { timestamps: true, versionKey: false, collection: "fumigacao_funcionarios" });
 
+const clienteSchema = new Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  nome: { type: String, required: true, trim: true, index: true },
+  ativo: { type: Boolean, default: true, index: true },
+}, { timestamps: true, versionKey: false, collection: "fumigacao_clientes" });
+
 const relatorioSchema = new Schema({
   id: { type: String, required: true, unique: true, index: true },
   usuarioId: { type: String, required: true, index: true },
   empresa: { type: String, required: true, trim: true, index: true },
+  cliente: { type: String, default: "", trim: true, index: true },
+  produto: { type: String, default: "", trim: true, index: true },
+  quantidade: { type: String, default: "", trim: true, index: true },
+  placaVeiculo: { type: String, default: "", trim: true, index: true },
   lotes: { type: [String], required: true, index: true },
   dataTratamento: { type: Date, required: true },
   dataInicio: { type: Date, default: null },
@@ -85,3 +95,4 @@ export const OsCounter = mongoose.models.FumigacaoOsCounter || mongoose.model("F
 export const Empresa = mongoose.models.FumigacaoEmpresa || mongoose.model("FumigacaoEmpresa", empresaSchema);
 export const CadastroGlobal = mongoose.models.FumigacaoCadastroGlobal || mongoose.model("FumigacaoCadastroGlobal", cadastroGlobalSchema);
 export const Funcionario = mongoose.models.FumigacaoFuncionario || mongoose.model("FumigacaoFuncionario", funcionarioSchema);
+export const Cliente = mongoose.models.FumigacaoCliente || mongoose.model("FumigacaoCliente", clienteSchema);

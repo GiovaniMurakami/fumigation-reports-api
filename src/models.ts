@@ -1,1 +1,1 @@
-export { CadastroGlobal, Empresa, Funcionario, OsCounter, Relatorio, Usuario } from "./infra/mongodb/modelos";
+export { CadastroGlobal, Cliente, Empresa, Funcionario, OsCounter, Relatorio, Usuario } from "./infra/mongodb/modelos";
