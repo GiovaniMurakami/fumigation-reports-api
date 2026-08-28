@@ -411,6 +411,8 @@ export function criarRotas(app: Express) {
 
     const lote = typeof req.query.lote === "string" ? normalizarLote(req.query.lote) : "";
     const dataOs = typeof req.query.dataOs === "string" ? chaveDataOsQuery(req.query.dataOs) : "";
+    const tipoControle = typeof req.query.tipoControle === "string" ? req.query.tipoControle.trim() : "";
+    const ordenar = req.query.ordenar === "criados" ? "criados" : "";
     const filtro: any = filtroAcessoRelatorios(usuario);
     if (lote) {
       const termo = escaparRegex(lote);
@@ -428,11 +430,17 @@ export function criarRotas(app: Express) {
       ];
     }
     if (dataOs) filtro.numeroOs = { $regex: `^OS-${dataOs}/` };
+    if (tipoControle) {
+      const tiposControle = tipoControle === "Arm. Feromônio - Lepidópteros"
+        ? [tipoControle, "Arm. Feromônio - Epdópterus"]
+        : [tipoControle];
+      filtro.tipoControle = { $in: tiposControle };
+    }
 
     const paginacao = obterPaginacao(req);
     const [itens, total] = await Promise.all([
       Relatorio.find(filtro)
-        .sort({ dataTratamento: -1 })
+        .sort(ordenar === "criados" ? { createdAt: -1 } : { dataTratamento: -1 })
         .skip((paginacao.pagina - 1) * paginacao.limite)
         .limit(paginacao.limite)
         .lean(),
