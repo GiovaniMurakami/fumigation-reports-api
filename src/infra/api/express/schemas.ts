@@ -11,6 +11,10 @@ export const loginSchema = z.object({
   senha: z.string().min(1),
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(32).max(500),
+});
+
 export const uploadFotoSchema = z.object({
   nome: z.string().min(1).max(200),
   contentType: z.string().regex(/^image\/(jpeg|png|webp)$/),
@@ -24,6 +28,11 @@ const fotoSchema = z.object({
   contentType: z.string().regex(/^image\/(jpeg|png|webp)$/),
 });
 
+const loteQuantidadeSchema = z.object({
+  lote: z.string().trim().min(1).max(80),
+  quantidade: z.string().trim().min(1).max(80),
+});
+
 const assinaturaSchema = fotoSchema.extend({
   id: z.string().min(1).optional(),
   cargo: z.string().trim().max(120).optional(),
@@ -33,6 +42,7 @@ export const relatorioSchema = z.object({
   empresa: z.string().trim().max(120).optional(),
   assinaturaIds: z.array(z.string().trim().min(1)).max(10).optional(),
   lotes: z.array(z.string().trim().min(1).max(80)).optional(),
+  lotesQuantidades: z.array(loteQuantidadeSchema).max(200).optional(),
   cliente: z.string().trim().max(160).optional(),
   produto: z.string().trim().max(120).optional(),
   quantidade: z.string().trim().max(80).optional(),

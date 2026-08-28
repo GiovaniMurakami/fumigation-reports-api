@@ -12,7 +12,7 @@ import { tokenHash } from "../../../helpers/token";
 import { CadastroGlobal, Cliente, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
 import { assinarUrlObjeto, gerarUrlUploadFoto } from "../../services/s3Servico";
 import { autenticarJwt } from "./middlewares/autenticarJwt";
-import { cadastroGlobalSchema, cadastroSchema, clientesSchema, empresaSchema, funcionariosSchema, loginSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
+import { cadastroGlobalSchema, cadastroSchema, clientesSchema, empresaSchema, funcionariosSchema, loginSchema, refreshTokenSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
 
 const rolesEscrita = new Set(["admin", "funcionario"]);
 
@@ -68,6 +68,8 @@ const cadastroGlobalId = "global";
 const paginaPadrao = 1;
 const limitePadraoRelatorios = 20;
 const limiteMaximoRelatorios = 100;
+const accessTokenDuracao = "8h";
+const refreshTokenDias = 30;
 
 export function criarRotas(app: Express) {
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -141,8 +143,37 @@ export function criarRotas(app: Express) {
       return res.status(403).json({ mensagem: "Cadastro aguardando validação de um admin." });
     }
 
-    const token = jwt.sign({ id: perfil.id, email: perfil.email, nome: perfil.nome, role: perfil.role }, obterJwtSecret(), { expiresIn: "8h" });
-    res.json({ token, usuario: usuarioPublico(usuario) });
+    const tokens = await gerarTokensSessao(usuario);
+    res.json({ ...tokens, usuario: usuarioPublico(usuario) });
+  });
+
+  app.post("/auth/refresh", async (req, res) => {
+    const parsed = refreshTokenSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ mensagem: "Refresh token inválido." });
+
+    const usuario = await Usuario.findOne({
+      refreshTokenHash: tokenHash(parsed.data.refreshToken),
+      refreshTokenExpiraEm: { $gt: new Date() },
+    });
+    if (!usuario) return res.status(401).json({ mensagem: "Sessão inválida ou expirada." });
+
+    if (perfilUsuario(usuario).status !== "ativo") {
+      return res.status(403).json({ mensagem: "Cadastro aguardando validação de um admin." });
+    }
+
+    const tokens = await gerarTokensSessao(usuario);
+    res.json({ ...tokens, usuario: usuarioPublico(usuario) });
+  });
+
+  app.post("/auth/logout", async (req, res) => {
+    const parsed = refreshTokenSchema.safeParse(req.body);
+    if (parsed.success) {
+      await Usuario.updateOne(
+        { refreshTokenHash: tokenHash(parsed.data.refreshToken) },
+        { $set: { refreshTokenHash: "", refreshTokenExpiraEm: null } },
+      );
+    }
+    res.status(204).send();
   });
 
   app.get("/usuarios", autenticarJwt, async (req, res) => {
@@ -345,7 +376,17 @@ export function criarRotas(app: Express) {
 
     const relatorioId = uuid();
     const numeroOs = await gerarNumeroOs(dataTratamento, empresa, relatorioId);
-    const lotes = [...new Set([...(parsed.data.lotes || []), numeroOs].map(normalizarLote))];
+    const lotesQuantidades = (parsed.data.lotesQuantidades || []).map((item) => ({
+      lote: normalizarLote(item.lote),
+      quantidade: item.quantidade.trim(),
+    }));
+    const lotes = [
+      ...new Set([
+        ...(parsed.data.lotes || []),
+        ...lotesQuantidades.map((item) => item.lote),
+        numeroOs,
+      ].map(normalizarLote)),
+    ];
     const relatorio = await Relatorio.create({
       ...parsed.data,
       empresa,
@@ -354,6 +395,7 @@ export function criarRotas(app: Express) {
       dataInicio,
       dataFim,
       lotes,
+      lotesQuantidades,
       numeroOs,
       formularioTitulo: parsed.data.formularioTitulo || "Registro de controle de pragas",
       id: relatorioId,
@@ -380,6 +422,8 @@ export function criarRotas(app: Express) {
         { cliente: { $regex: termo, $options: "i" } },
         { produto: { $regex: termo, $options: "i" } },
         { quantidade: { $regex: termo, $options: "i" } },
+        { "lotesQuantidades.lote": { $regex: termo, $options: "i" } },
+        { "lotesQuantidades.quantidade": { $regex: termo, $options: "i" } },
         { placaVeiculo: { $regex: termo, $options: "i" } },
       ];
     }
@@ -474,6 +518,23 @@ function normalizarInteiroQuery(valor: unknown, padrao: number, minimo: number, 
   const numero = typeof bruto === "string" ? Number(bruto) : Number.NaN;
   if (!Number.isInteger(numero) || numero < minimo) return padrao;
   return typeof maximo === "number" ? Math.min(numero, maximo) : numero;
+}
+
+async function gerarTokensSessao(usuario: any) {
+  const perfil = perfilUsuario(usuario);
+  const token = jwt.sign(
+    { id: perfil.id, email: perfil.email, nome: perfil.nome, role: perfil.role },
+    obterJwtSecret(),
+    { expiresIn: accessTokenDuracao },
+  );
+  const refreshToken = crypto.randomBytes(48).toString("base64url");
+  const refreshTokenExpiraEm = new Date(Date.now() + refreshTokenDias * 24 * 60 * 60 * 1000);
+
+  usuario.refreshTokenHash = tokenHash(refreshToken);
+  usuario.refreshTokenExpiraEm = refreshTokenExpiraEm;
+  await usuario.save();
+
+  return { token, refreshToken, refreshTokenExpiraEm };
 }
 
 function chaveDataOsQuery(valor: string) {

@@ -11,6 +11,8 @@ const usuarioSchema = new Schema({
   empresas: { type: [String], default: [], index: true },
   validadoPor: { type: String, default: null },
   validadoEm: { type: Date, default: null },
+  refreshTokenHash: { type: String, default: "", index: true },
+  refreshTokenExpiraEm: { type: Date, default: null },
 }, { timestamps: true, versionKey: false, collection: "fumigacao_usuarios" });
 
 const fotoSchema = new Schema({
@@ -27,6 +29,11 @@ const assinaturaSchema = new Schema({
   url: { type: String, required: true },
   chave: { type: String, required: true },
   contentType: { type: String, required: true },
+}, { _id: false });
+
+const loteQuantidadeSchema = new Schema({
+  lote: { type: String, required: true, trim: true, index: true },
+  quantidade: { type: String, required: true, trim: true, index: true },
 }, { _id: false });
 
 const empresaSchema = new Schema({
@@ -62,6 +69,7 @@ const relatorioSchema = new Schema({
   quantidade: { type: String, default: "", trim: true, index: true },
   placaVeiculo: { type: String, default: "", trim: true, index: true },
   lotes: { type: [String], required: true, index: true },
+  lotesQuantidades: { type: [loteQuantidadeSchema], default: [] },
   dataTratamento: { type: Date, required: true },
   dataInicio: { type: Date, default: null },
   dataFim: { type: Date, default: null },
