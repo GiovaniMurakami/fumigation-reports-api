@@ -12,7 +12,7 @@ import { tokenHash } from "../../../helpers/token";
 import { CadastroGlobal, Cliente, Empresa, Funcionario, Relatorio, Usuario } from "../../mongodb/modelos";
 import { assinarUrlObjeto, gerarUrlUploadFoto } from "../../services/s3Servico";
 import { autenticarJwt } from "./middlewares/autenticarJwt";
-import { cadastroGlobalSchema, cadastroSchema, clientesSchema, empresaSchema, funcionariosSchema, loginSchema, refreshTokenSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
+import { atualizarRelatorioSchema, cadastroGlobalSchema, cadastroSchema, clientesSchema, empresaSchema, funcionariosSchema, loginSchema, refreshTokenSchema, relatorioSchema, uploadFotoSchema, validarUsuarioSchema } from "./schemas";
 
 const rolesEscrita = new Set(["admin", "funcionario"]);
 
@@ -465,6 +465,93 @@ export function criarRotas(app: Express) {
     const item = await buscarRelatorioUsuario(req, res);
     if (!item) return;
     res.json(await comFotosAssinadas(item));
+  });
+
+  app.patch("/relatorios/:id", autenticarJwt, async (req, res) => {
+    const admin = await exigirAdmin(req, res);
+    if (!admin) return;
+
+    const item = await Relatorio.findOne({ id: req.params.id, ...filtroAcessoRelatorios(admin) });
+    if (!item) return res.status(404).json({ mensagem: "Relatório não encontrado." });
+
+    const parsed = atualizarRelatorioSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ mensagem: "Revise os dados do relatório.", erros: z.flattenError(parsed.error).fieldErrors });
+
+    const update: any = {};
+    const data = parsed.data;
+    const camposTexto = [
+      "cliente",
+      "produto",
+      "quantidade",
+      "placaVeiculo",
+      "formularioTitulo",
+      "unidadeCliente",
+      "areaSetor",
+      "tipoControle",
+      "numeroOs",
+      "realizadoPor",
+    ] as const;
+
+    if (data.empresa !== undefined) {
+      const empresa = resolverEmpresaRelatorio(admin, data.empresa);
+      if (!empresa) return res.status(400).json({ mensagem: "Informe uma empresa permitida para o relatório." });
+      update.empresa = empresa;
+    }
+    for (const campo of camposTexto) {
+      if (data[campo] !== undefined) update[campo] = data[campo]?.trim() || "";
+    }
+    if (data.dataTratamento !== undefined) update.dataTratamento = new Date(data.dataTratamento);
+    if (data.dataInicio !== undefined) update.dataInicio = data.dataInicio ? new Date(data.dataInicio) : null;
+    if (data.dataFim !== undefined) update.dataFim = data.dataFim ? new Date(data.dataFim) : null;
+    const dataInicioFinal = update.dataInicio !== undefined ? update.dataInicio : item.dataInicio;
+    const dataFimFinal = update.dataFim !== undefined ? update.dataFim : item.dataFim;
+    if (dataInicioFinal && dataFimFinal && dataFimFinal < dataInicioFinal) {
+      return res.status(400).json({ mensagem: "A data de fim não pode ser anterior à data de início." });
+    }
+    if (data.lotesQuantidades !== undefined) {
+      update.lotesQuantidades = data.lotesQuantidades.map((linha) => ({
+        lote: normalizarLote(linha.lote),
+        quantidade: linha.quantidade.trim(),
+      }));
+    }
+    if (data.lotes !== undefined || data.lotesQuantidades !== undefined || data.numeroOs !== undefined) {
+      const lotesBase = data.lotes !== undefined
+        ? data.lotes
+        : data.lotesQuantidades !== undefined
+          ? []
+          : item.lotes || [];
+      update.lotes = [
+        ...new Set([
+          ...lotesBase,
+          ...((update.lotesQuantidades || item.lotesQuantidades || []).map((linha: any) => linha.lote)),
+          update.numeroOs || item.numeroOs,
+        ].map(normalizarLote).filter(Boolean)),
+      ];
+    }
+    if (data.dados !== undefined) update.dados = data.dados;
+    if (data.fotos !== undefined) {
+      const fotosExistentes = new Set((item.fotos || []).map((foto: any) => foto.chave));
+      const fotosInvalidas = data.fotos.filter((foto) =>
+        !fotosExistentes.has(foto.chave) && !foto.chave.startsWith(`fumigacao/${req.usuarioId}/`),
+      );
+      if (fotosInvalidas.length) {
+        return res.status(400).json({ mensagem: "Uma ou mais evidências não pertencem a este relatório ou usuário." });
+      }
+      update.fotos = data.fotos;
+    }
+
+    item.set(update);
+    await item.save();
+    res.json(await comFotosAssinadas(item));
+  });
+
+  app.delete("/relatorios/:id", autenticarJwt, async (req, res) => {
+    const admin = await exigirAdmin(req, res);
+    if (!admin) return;
+
+    const result = await Relatorio.deleteOne({ id: req.params.id, ...filtroAcessoRelatorios(admin) });
+    if (!result.deletedCount) return res.status(404).json({ mensagem: "Relatório não encontrado." });
+    res.status(204).send();
   });
 
 

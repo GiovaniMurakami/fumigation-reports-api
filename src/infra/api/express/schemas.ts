@@ -60,6 +60,14 @@ export const relatorioSchema = z.object({
   fotos: z.array(fotoSchema).default([]),
 });
 
+export const atualizarRelatorioSchema = relatorioSchema
+  .partial()
+  .extend({
+    dataInicio: z.iso.datetime().nullable().optional(),
+    dataFim: z.iso.datetime().nullable().optional(),
+    dados: z.record(z.string(), z.unknown()).optional(),
+  });
+
 export const validarUsuarioSchema = z.object({
   empresa: z.string().trim().max(120).optional(),
   empresas: z.array(z.string().trim().min(2).max(120)).max(50).optional(),
